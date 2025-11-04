@@ -59,11 +59,13 @@ import com.google.inject.matcher.Matcher;
 import com.google.inject.multibindings.MapBinder;
 import com.google.inject.multibindings.Multibinder;
 import com.google.inject.multibindings.OptionalBinder;
+import com.google.inject.util.Modules;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -120,6 +122,16 @@ public final class Elements {
     // Free the memory consumed by the stack trace elements cache
     StackTraceElements.clearCache();
     return Collections.unmodifiableList(binder.elements);
+  }
+
+  /** Returns a list of the top-level modules installed by the input {@code module}. */
+  public static List<Module> getInstalledModules(Stage stage, Module module) {
+    if (module.equals(Modules.EMPTY_MODULE)) {
+      return ImmutableList.of();
+    }
+    RecordTopLevelModulesBinder binder = new RecordTopLevelModulesBinder(stage);
+    binder.record(module);
+    return ImmutableList.copyOf(binder.topLevelModules);
   }
 
   // TODO(user): Consider moving the RecordingBinder to com.google.inject.internal and removing these
@@ -214,7 +226,8 @@ public final class Elements {
     private final BindingSourceRestriction.PermitMapConstruction permitMapConstruction;
 
     /** The current modules stack */
-    private ModuleSource moduleSource = null;
+    protected ModuleSource moduleSource = null;
+
     /**
      * The current scanner.
      *
@@ -648,7 +661,7 @@ public final class Elements {
       return builder;
     }
 
-    private ModuleSource getModuleSource(Class<?> module) {
+    protected ModuleSource getModuleSource(Class<?> module) {
       if (moduleSource == null) {
         return new ModuleSource(module, permitMapConstruction.getPermitMap());
       }
@@ -696,6 +709,31 @@ public final class Elements {
     @Override
     public String toString() {
       return "Binder";
+    }
+  }
+
+  /** Records top-level modules installed by a parent module. */
+  private static class RecordTopLevelModulesBinder extends RecordingBinder {
+
+    private final LinkedHashSet<Module> topLevelModules = new LinkedHashSet<>();
+
+    RecordTopLevelModulesBinder(Stage stage) {
+      super(stage);
+    }
+
+    private void record(Module module) {
+      // Prepare a moduleSource for bind(..) calls in this module,
+      // which require a moduleSource. The result of the bind(..)
+      // calls are thrown away, but they still need to be processed
+      // to discover any of the install(..) calls.
+      moduleSource = getModuleSource(module.getClass());
+      module.configure(this);
+    }
+
+    @Override
+    public void install(Module module) {
+      // Only record the module, but do not install it.
+      topLevelModules.add(module);
     }
   }
 }

@@ -17,6 +17,7 @@
 package com.google.inject.spi;
 
 import static com.google.common.collect.Iterables.getOnlyElement;
+import static com.google.common.truth.Truth.assertThat;
 import static com.google.inject.Asserts.assertContains;
 import static com.google.inject.Asserts.getDeclaringSourcePart;
 import static java.lang.annotation.RetentionPolicy.RUNTIME;
@@ -1349,6 +1350,50 @@ public class ElementsTest extends TestCase {
     assertEquals(1, aConfigureCount.get());
   }
 
+  public void testGetInstalledModules() {
+    final Module a =
+        new AbstractModule() {
+          @Override
+          public void configure() {
+            bind(List.class).to(ArrayList.class);
+          }
+        };
+    final Module b =
+        new AbstractModule() {
+          @Override
+          protected void configure() {
+            install(a);
+          }
+        };
+    List<Module> bInstalledModules = Elements.getInstalledModules(Stage.DEVELOPMENT, b);
+    assertThat(bInstalledModules).containsExactly(a);
+
+    final Module c =
+        new AbstractModule() {
+          @Override
+          protected void configure() {
+            // Does nothing
+          }
+        };
+    final Module d =
+        new AbstractModule() {
+          @Override
+          protected void configure() {
+            install(b);
+            install(c);
+          }
+        };
+    List<Module> dInstalledModules = Elements.getInstalledModules(Stage.DEVELOPMENT, d);
+    assertThat(dInstalledModules).containsExactly(b, c).inOrder();
+  }
+
+  public void testGetInstalledModulesWhenModuleInstallsItself() {
+    final Module m = new TestModule(true);
+    List<Module> installedModules = Elements.getInstalledModules(Stage.DEVELOPMENT, m);
+    assertThat(installedModules).hasSize(1);
+    assertThat(installedModules.get(0)).isInstanceOf(TestModule.class);
+  }
+
   /** Ensures the module performs the commands consistent with {@code visitors}. */
   protected void checkModule(Module module, ElementVisitor<?>... visitors) {
     List<Element> elements = Elements.getElements(module);
@@ -1418,5 +1463,21 @@ public class ElementsTest extends TestCase {
     String a;
 
     C(@Named("bar") @SampleAnnotation Integer b) {}
+  }
+
+  private class TestModule extends AbstractModule {
+    private final boolean installSelf;
+
+    TestModule(boolean installSelf) {
+      this.installSelf = installSelf;
+    }
+
+    @Override
+    protected void configure() {
+      if (installSelf) {
+        bind(List.class).to(ArrayList.class);
+        install(new TestModule(false));
+      }
+    }
   }
 }
