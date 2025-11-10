@@ -107,7 +107,7 @@ public final class CheckedProvidersTest extends TestCase {
       fail("Expected an exception to be thrown");
     } catch (IllegalArgumentException e) {
       assertThat(e).hasMessageThat().isEqualTo(message);
-      assertWithMessage(String.format("exception <%s> with cause", e))
+      assertWithMessage("exception <%s> with cause", e)
           .that(e.getCause())
           .isInstanceOf(NoSuchMethodException.class);
     }
